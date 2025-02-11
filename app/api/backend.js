@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_GATEWAY_URL = "http://localhost:8765";
+const API_GATEWAY_URL = "http://139.179.207.16:8765";
 
 const searchPeople = async (username) => {
   try {

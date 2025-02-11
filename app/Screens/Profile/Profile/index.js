@@ -74,16 +74,6 @@ export default function ProfileScreen() {
         throw new Error("❌ Kullanıcı bilgisi alınamadı.");
       }
   
-      // **Kullanıcı bilgilerini profile kaydet**
-      setProfile((prev) => ({
-        ...prev,
-        username: userData.username || "Unknown",
-        bio: userData.bio || "No bio available",
-        location: userData.location || "Unknown location",
-        link: userData.link || "Unknown link",
-        profileImage: userData.profileImage || "https://cdn-icons-png.flaticon.com/512/149/149071.png",
-      }));
-  
       console.log("⏳ Kullanıcı favorileri çekiliyor...");
   
       // ✅ Favori Albümleri getir
@@ -94,12 +84,16 @@ export default function ProfileScreen() {
       let favoriteArtistsData = await getFavorites(userId, "artist");
       console.log("🎤 Favori Sanatçılar:", favoriteArtistsData);
   
-      // **Verileri setProfile içine ekleyelim**
-      setProfile((prev) => ({
-        ...prev,
+      // **TEK BİR `setProfile` ÇAĞRISI YAP**
+      setProfile({
+        username: userData.username || "Unknown",
+        bio: userData.bio || "No bio available",
+        location: userData.location || "Unknown location",
+        link: userData.link || "Unknown link",
+        profileImage: userData.profileImage || "https://cdn-icons-png.flaticon.com/512/149/149071.png",
         favoriteAlbums: favoriteAlbumsData.length > 0 ? favoriteAlbumsData : Array(4).fill(null),
         favoriteArtists: favoriteArtistsData.length > 0 ? favoriteArtistsData : Array(4).fill(null),
-      }));
+      });
   
     } catch (error) {
       console.error("❌ Kullanıcı veya Favoriler Alınamadı:", error);
@@ -110,6 +104,7 @@ export default function ProfileScreen() {
   useEffect(() => {
     fetchProfileAndFavorites();
   }, []);
+  
   
 
   useEffect(() => {
