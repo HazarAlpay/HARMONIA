@@ -170,13 +170,31 @@ export default function ProfileScreen() {
         ) : (
           <Ionicons name="person-circle-outline" size={80} color="gray" />
         )}
+        <View style={styles.statsContainer}>
+          <TouchableOpacity style={styles.statItem} onPress={() => console.log("Reviews clicked")}>
+            <Text style={styles.statNumber}>{Math.floor(Math.random() * 100)}</Text>
+            <Text style={styles.statLabel}>Reviews</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.statItem} onPress={() => console.log("Following clicked")}>
+            <Text style={styles.statNumber}>{Math.floor(Math.random() * 500)}</Text>
+            <Text style={styles.statLabel}>Following</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.statItem} onPress={() => console.log("Followers clicked")}>
+            <Text style={styles.statNumber}>{Math.floor(Math.random() * 1000)}</Text>
+            <Text style={styles.statLabel}>Followers</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={styles.bioContainer}>  
         <Text style={styles.username}>{profile.username}</Text>
         <Text style={styles.bio}>{profile.bio}</Text>
         <View style={styles.locationLinkContainer}>
             <Text style={styles.location}>
               <Ionicons name="location-outline" size={16} color="gray" /> {profile.location}
             </Text>
-            <Text style={styles.separator}> | </Text>
+            <Text style={styles.separator1}> | </Text>
             <Text style={styles.link}>
               <Ionicons name="link-outline" size={16} color="gray" /> {profile.link}
             </Text>
@@ -209,6 +227,12 @@ export default function ProfileScreen() {
             )}
           </TouchableOpacity>
         ))}
+      </View>
+      
+      <View style={styles.separator} />
+      <Text style={styles.favoriteTitle}>REVIEWS</Text>
+      <View style={styles.gridContainer}>
+        
       </View>
 
       <Modal visible={modalVisible} animationType="fade" transparent={true}>
@@ -251,20 +275,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 20,
   },
-  profileImage: { width: 80, height: 80, borderRadius: 40, marginRight: 15 },
+  profileImage: { width: 80, height: 80, borderRadius: 40, marginRight: 10 },
 
   profileDetails: {
     alignItems: "flex-start",
     paddingHorizontal: 15,
     marginTop: -10,
   },
-  username: { fontSize: 18, fontWeight: "bold", color: "white" },
+bioContainer: {marginLeft:15},
+
+  username: { fontSize: 18, fontWeight: "bold", color: "white" , marginVertical: 15},
   bio: { fontSize: 14, color: "white", marginVertical: 5 },
 
-  locationLinkContainer: { flexDirection: "row", alignItems: "center" },
+  locationLinkContainer: { flexDirection: "row", alignItems: "center",marginVertical: 5 },
   location: { fontSize: 14, color: "white" },
   link: { fontSize: 14, color: "green" },
-  separator: { fontSize: 14, color: "gray", marginHorizontal: 5 },
+  separator1: { fontSize: 14, color: "gray", marginHorizontal: 5 },
   link: { fontSize: 14, color: "#1DB954" },
 
   statsContainer: {
@@ -272,11 +298,37 @@ const styles = StyleSheet.create({
     marginLeft: "auto",
     alignItems: "center",
   },
-  statItem: { alignItems: "center", marginHorizontal: 10 },
-  statNumber: { fontSize: 18, fontWeight: "bold", color: "white" },
-  statLabel: { fontSize: 12, color: "gray" },
+  profileInfoContainer: {
+    flexDirection: "row", // Profil fotosu ve istatistikleri yan yana getirir
+    alignItems: "center", // Dikeyde hizalar
+    paddingHorizontal: 15,
+    marginTop: 20,
+  },
+  statsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "50%",  // Profil resmine göre hizalamak için genişlik ayarı
+    marginLeft: 50, // Fotoğraftan biraz boşluk bırak
+  },
 
-  separatorLine: { height: 1, backgroundColor: "gray", marginVertical: 20 },
+  statItem: {
+    alignItems: "center",
+    marginHorizontal: 10, // Butonlar arasına mesafe ekleyelim
+  },
+
+  statNumber: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "white",
+  },
+
+  statLabel: {
+    fontSize: 12,
+    color: "gray",
+  },
+
+  separator: { height: 1, backgroundColor: "gray", marginVertical: 20 },
 
   favoriteTitle: {
     fontSize: 18,
