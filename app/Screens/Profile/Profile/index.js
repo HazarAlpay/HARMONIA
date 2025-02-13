@@ -15,6 +15,7 @@ import Ionicons from "react-native-vector-icons/Ionicons";
 import { getUserProfile } from "../../../api/backend";
 import { getAccessToken, searchArtists, searchAlbums } from "../../../api/spotify";
 import axios from "axios"; // API çağrıları için axios ekliyoruz.
+import { ImageBackground } from "react-native";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -37,21 +38,10 @@ export default function ProfileScreen() {
   const [selectedCategory, setSelectedCategory] = useState("albums");
   const [selectedIndex, setSelectedIndex] = useState(null);
 
-  // ✅ FAVORİLERİ GETİRME FONKSİYONU (ProfileScreen içinde)
-  const getFavorites = async (userId, type) => {
-    try {
-      const response = await axios.get(`http://139.179.207.16:8765/favorite/user/${userId}/${type}`);
-      return response.data;
-    } catch (error) {
-      console.error('❌ Favori ${type} getirme hatası:', error);
-      return [];
-    }
-  };
-
   // ✅ FAVORİ EKLEME FONKSİYONU
   const addFavorite = async (userId, spotifyId, type) => {
     try {
-      await axios.post("http://139.179.207.16:8765/favorite/add-favorite", {
+      await axios.post("http://172.20.10.8:8765/favorite/add-favorite", {
         userId,
         spotifyId,
         type,
@@ -62,64 +52,111 @@ export default function ProfileScreen() {
     }
   };
 
-  const fetchProfileAndFavorites = async () => {
+  // ✅ Kullanıcının favori albüm ve sanatçılarının fotoğraflarını çekme fonksiyonu
+  const getUserFavoritesImages = async (accessToken, userId) => {
     try {
-      console.log("⏳ Kullanıcı profili çekiliyor...");
-      
-      // ✅ Kullanıcı bilgilerini getir
-      const userData = await getUserProfile(userId);
-      console.log("👤 Kullanıcı Profili API Yanıtı:", userData);
-  
-      if (!userData || Object.keys(userData).length === 0) {
-        throw new Error("❌ Kullanıcı bilgisi alınamadı.");
+      console.log(`🔍 Favoriler çekiliyor: userId=${userId}`);
+
+      const response = await axios.get(`http://172.20.10.8:8765/favorite/user/${userId}/all`);
+      const favorites = response.data;
+
+      if (!favorites.length) {
+        console.log("ℹ Kullanıcının favorisi yok.");
+        return [];
       }
-  
-      console.log("⏳ Kullanıcı favorileri çekiliyor...");
-  
-      // ✅ Favori Albümleri getir
-      let favoriteAlbumsData = await getFavorites(userId, "album");
-      console.log("🎵 Favori Albümler:", favoriteAlbumsData);
-  
-      // ✅ Favori Sanatçıları getir
-      let favoriteArtistsData = await getFavorites(userId, "artist");
-      console.log("🎤 Favori Sanatçılar:", favoriteArtistsData);
-  
-      // **TEK BİR `setProfile` ÇAĞRISI YAP**
-      setProfile({
-        username: userData.username || "Unknown",
-        bio: userData.bio || "No bio available",
-        location: userData.location || "Unknown location",
-        link: userData.link || "Unknown link",
-        profileImage: userData.profileImage || "https://cdn-icons-png.flaticon.com/512/149/149071.png",
-        favoriteAlbums: favoriteAlbumsData.length > 0 ? favoriteAlbumsData : Array(4).fill(null),
-        favoriteArtists: favoriteArtistsData.length > 0 ? favoriteArtistsData : Array(4).fill(null),
-      });
-  
+
+      console.log("✅ Favoriler alındı:", favorites);
+
+      // API çağrısı ile her albüm ve sanatçının fotoğrafını çek
+      const fetchImage = async (type, spotifyId) => {
+        const url = `https://api.spotify.com/v1/${type}s/${spotifyId}`;
+        console.log(`🔄 Spotify'dan çekiliyor: ${url}`);
+
+        const response = await fetch(url, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+
+        if (!response.ok) {
+          console.error(`❌ Spotify API hatası: ${response.status}`);
+          return null;
+        }
+
+        const data = await response.json();
+        console.log(`✅ Spotify API Yanıtı (${type} - ${spotifyId}):`, data);
+
+        return {
+          id: spotifyId,
+          name: data.name,
+          image: data.images?.[0]?.url || null,
+          type,
+        };
+      };
+
+      const images = await Promise.all(favorites.map(({ type, spotifyId }) => fetchImage(type, spotifyId)));
+
+      console.log("✅ Favori görselleri çekildi:", images);
+
+      return images;
     } catch (error) {
-      console.error("❌ Kullanıcı veya Favoriler Alınamadı:", error);
+      console.error("❌ Kullanıcının favori görselleri alınamadı:", error.response ? error.response.data : error.message);
+      return [];
     }
   };
-  
-  // **useEffect İçinde Çalıştır**
+
   useEffect(() => {
+    const fetchProfileAndFavorites = async () => {
+      try {
+        console.log("⏳ Kullanıcı profili çekiliyor...");
+        const userData = await getUserProfile(userId);
+
+        if (!userData) throw new Error("❌ Kullanıcı bilgisi alınamadı.");
+
+        const token = await getAccessToken();
+        setAccessToken(token);
+
+        console.log("⏳ Kullanıcı favorileri ve görselleri çekiliyor...");
+        const images = await getUserFavoritesImages(token, userId);
+
+        console.log("✅ Favori görselleri çekildi:", images);
+
+        // Albüm ve sanatçıları ayrıştır
+        const favoriteAlbumsData = images.filter(fav => fav.type === "album");
+        const favoriteArtistsData = images.filter(fav => fav.type === "artist");
+
+        // Kullanıcı profilini ve favorileri güncelle
+        setProfile(prevProfile => ({
+          ...prevProfile, // ✅ Önceki state'i koruyoruz
+          username: userData.username || "Unknown",
+          bio: userData.bio || "No bio available",
+          location: userData.location || "Unknown location",
+          link: userData.link || "Unknown link",
+          profileImage: userData.profileImage || "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+          favoriteAlbums: favoriteAlbumsData.length > 0 ? favoriteAlbumsData : prevProfile.favoriteAlbums,
+          favoriteArtists: favoriteArtistsData.length > 0 ? favoriteArtistsData : prevProfile.favoriteArtists,
+        }));
+
+        console.log("✅ Güncellenmiş profil state:", profile);
+
+      } catch (error) {
+        console.error("❌ Kullanıcı veya favoriler alınamadı:", error);
+      }
+    };
+
     fetchProfileAndFavorites();
   }, []);
-  
-  
 
   useEffect(() => {
-  const fetchToken = async () => {
-    try {
-      const token = await getAccessToken();
-      console.log("🔑 Access Token:", token);
-      setAccessToken(token);
-    } catch (error) {
-      console.error("❌ Error fetching access token:", error);
-    }
-  };
-  fetchToken();
-}, []);
-
+    const fetchToken = async () => {
+      try {
+        const token = await getAccessToken();
+        console.log("🔑 Access Token:", token);
+        setAccessToken(token);
+      } catch (error) {
+        console.error("❌ Error fetching access token:", error);
+      }
+    };
+    fetchToken();
+  }, []);
 
   const handleSearch = async (text) => {
     setSearchText(text);
@@ -187,29 +224,39 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </View>
-      <View style={styles.bioContainer}>  
+      <View style={styles.bioContainer}>
         <Text style={styles.username}>{profile.username}</Text>
         <Text style={styles.bio}>{profile.bio}</Text>
         <View style={styles.locationLinkContainer}>
-            <Text style={styles.location}>
-              <Ionicons name="location-outline" size={16} color="gray" /> {profile.location}
-            </Text>
-            <Text style={styles.separator1}> | </Text>
-            <Text style={styles.link}>
-              <Ionicons name="link-outline" size={16} color="gray" /> {profile.link}
-            </Text>
-          </View>
+          <Text style={styles.location}>
+            <Ionicons name="location-outline" size={16} color="gray" /> {profile.location}
+          </Text>
+          <Text style={styles.separator1}> | </Text>
+          <Text style={styles.link}>
+            <Ionicons name="link-outline" size={16} color="gray" /> {profile.link}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.separator} />
       <Text style={styles.favoriteTitle}>FAVORITE ALBUMS</Text>
       <View style={styles.gridContainer}>
-        {profile.favoriteAlbums.map((album, index) => (
+        {[...profile.favoriteAlbums, ...Array(4 - profile.favoriteAlbums.length).fill(null)].map((album, index) => (
           <TouchableOpacity key={index} onPress={() => { setSelectedCategory("albums"); setSelectedIndex(index); setModalVisible(true); }}>
             {album ? (
-              <Image source={{ uri: album.images?.[0]?.url || "" }} style={styles.album} />
+              <>
+                <Text style={{ color: "white", fontSize: 12 }}>{album.name}</Text>
+                <Image
+                  source={{ uri: album.image }}
+                  style={styles.album}
+                  resizeMode="cover"
+                  onError={(e) => console.warn(`⚠ Image Load Warning for ${album.name}:`, e.nativeEvent.error)}
+                />
+              </>
             ) : (
-              <View style={styles.emptyAlbum}><Ionicons name="add" size={40} color="white" /></View>
+              <View style={styles.emptyAlbum}>
+                <Ionicons name="add" size={40} color="white" />
+              </View>
             )}
           </TouchableOpacity>
         ))}
@@ -218,21 +265,30 @@ export default function ProfileScreen() {
       <View style={styles.separator} />
       <Text style={styles.favoriteTitle}>FAVORITE ARTISTS</Text>
       <View style={styles.gridContainer}>
-        {profile.favoriteArtists.map((artist, index) => (
+        {[...profile.favoriteArtists, ...Array(4 - profile.favoriteArtists.length).fill(null)].map((artist, index) => (
           <TouchableOpacity key={index} onPress={() => { setSelectedCategory("artists"); setSelectedIndex(index); setModalVisible(true); }}>
             {artist ? (
-              <Image source={{ uri: artist.images?.[0]?.url || "" }} style={styles.artist} />
+              <>
+                <Text style={{ color: "white", fontSize: 12 }}>{artist.name}</Text>
+                <Image
+                  source={{ uri: artist.image }}
+                  style={styles.artist}
+                  resizeMode="cover"
+                  onError={(e) => console.warn(`⚠ Image Load Warning for ${artist.name}:`, e.nativeEvent.error)}
+                />
+              </>
             ) : (
-              <View style={styles.emptyArtist}><Ionicons name="add" size={40} color="white" /></View>
+              <View style={styles.emptyArtist}>
+                <Ionicons name="add" size={40} color="white" />
+              </View>
             )}
           </TouchableOpacity>
         ))}
       </View>
-      
+
       <View style={styles.separator} />
       <Text style={styles.favoriteTitle}>REVIEWS</Text>
       <View style={styles.gridContainer}>
-        
       </View>
 
       <Modal visible={modalVisible} animationType="fade" transparent={true}>
@@ -258,7 +314,6 @@ export default function ProfileScreen() {
   );
 }
 
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "black" },
 
@@ -282,12 +337,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     marginTop: -10,
   },
-bioContainer: {marginLeft:15},
+  bioContainer: { marginLeft: 15 },
 
-  username: { fontSize: 18, fontWeight: "bold", color: "white" , marginVertical: 15},
+  username: { fontSize: 18, fontWeight: "bold", color: "white", marginVertical: 15 },
   bio: { fontSize: 14, color: "white", marginVertical: 5 },
 
-  locationLinkContainer: { flexDirection: "row", alignItems: "center",marginVertical: 5 },
+  locationLinkContainer: { flexDirection: "row", alignItems: "center", marginVertical: 5 },
   location: { fontSize: 14, color: "white" },
   link: { fontSize: 14, color: "green" },
   separator1: { fontSize: 14, color: "gray", marginHorizontal: 5 },
@@ -358,7 +413,7 @@ bioContainer: {marginLeft:15},
   closeButton: { color: "white", textAlign: "center", fontSize: 16, marginTop: 10 },
   modalBackground: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.6)" },
   closeButton: { color: "white", textAlign: "center", fontSize: 16, marginTop: 10 },
-  
+
   emptyArtist: {
     width: 80,
     height: 80,
