@@ -55,6 +55,10 @@ export default function ProfileScreen() {
   const [selectedReviewId, setSelectedReviewId] = useState(null);
 
   const SPOTIFY_API_URL = "https://api.spotify.com/v1/albums";
+  const SPOTIFY_ALBUM_API_URL = "https://api.spotify.com/v1/albums";
+  const SPOTIFY_ARTIST_API_URL = "https://api.spotify.com/v1/artists";
+  
+
 
   // Spotify Access Token Alma
   const fetchSpotifyAccessToken = async () => {
@@ -216,7 +220,10 @@ export default function ProfileScreen() {
         }
   
         try {
-          const url = `https://api.spotify.com/v1/${type}s/${spotifyId}`;
+          const url = type === "album" 
+            ? `${SPOTIFY_ALBUM_API_URL}/${spotifyId}` 
+            : `${SPOTIFY_ARTIST_API_URL}/${spotifyId}`;
+          
           console.log(`🔄 Spotify'dan çekiliyor: ${url}`);
   
           const spotifyResponse = await fetch(url, {
@@ -255,27 +262,26 @@ export default function ProfileScreen() {
       return [];
     }
   };
-
   // Profil ve Favorileri Çekme
   useEffect(() => {
     const fetchProfileAndFavorites = async () => {
       try {
         console.log("⏳ Kullanıcı profili çekiliyor...");
         const userData = await getUserProfile(userId);
-
+    
         if (!userData) throw new Error("❌ Kullanıcı bilgisi alınamadı.");
-
+    
         const token = await getAccessToken();
         setAccessToken(token);
-
+    
         console.log("⏳ Kullanıcı favorileri ve görselleri çekiliyor...");
         const images = await getUserFavoritesImages(token, userId);
-
+    
         console.log("✅ Favori görselleri çekildi:", images);
-
+    
         const favoriteAlbumsData = images.filter(fav => fav.type === "album");
         const favoriteArtistsData = images.filter(fav => fav.type === "artist");
-
+    
         setProfile(prevProfile => ({
           ...prevProfile,
           username: userData.username || "Unknown",
@@ -286,9 +292,9 @@ export default function ProfileScreen() {
           favoriteAlbums: favoriteAlbumsData.length > 0 ? favoriteAlbumsData : prevProfile.favoriteAlbums,
           favoriteArtists: favoriteArtistsData.length > 0 ? favoriteArtistsData : prevProfile.favoriteArtists,
         }));
-
+    
         console.log("✅ Güncellenmiş profil state:", profile);
-
+    
       } catch (error) {
         console.error("❌ Kullanıcı veya favoriler alınamadı:", error);
       }
@@ -296,6 +302,36 @@ export default function ProfileScreen() {
 
     fetchProfileAndFavorites();
   }, []);
+
+  useEffect(() => {
+    const updateFavoritesImages = async () => {
+      if (!accessToken) return; // Eğer token yoksa, işlem yapma
+  
+      console.log("🔄 Favoriler tekrar güncelleniyor...");
+  
+      const allFavorites = [...profile.favoriteAlbums, ...profile.favoriteArtists]
+        .filter((fav) => fav && !fav.image); // Eğer favori var ama fotoğrafı yoksa
+  
+      if (allFavorites.length === 0) return;
+  
+      const updatedImages = await fetchFavoritesImages(allFavorites);
+  
+      setProfile((prevProfile) => ({
+        ...prevProfile,
+        favoriteAlbums: prevProfile.favoriteAlbums.map((album) =>
+          album && !album.image ? { ...album, image: updatedImages[album.id] } : album
+        ),
+        favoriteArtists: prevProfile.favoriteArtists.map((artist) =>
+          artist && !artist.image ? { ...artist, image: updatedImages[artist.id] } : artist
+        ),
+      }));
+  
+      console.log("✅ Eksik resimler güncellendi!");
+    };
+  
+    updateFavoritesImages();
+  }, [profile.favoriteAlbums, profile.favoriteArtists]);
+  
 
   // Access Token Çekme
   useEffect(() => {
@@ -334,7 +370,7 @@ export default function ProfileScreen() {
   // Arama Sonucu Seçme
   const handleSelectItem = async (item) => {
     const updatedProfile = { ...profile };
-
+  
     if (selectedCategory === "artists") {
       updatedProfile.favoriteArtists[selectedIndex] = item;
       await addFavorite(userId, item.id, "artist");
@@ -342,7 +378,7 @@ export default function ProfileScreen() {
       updatedProfile.favoriteAlbums[selectedIndex] = item;
       await addFavorite(userId, item.id, "album");
     }
-
+  
     setProfile(updatedProfile);
     setModalVisible(false);
   };
@@ -510,12 +546,12 @@ export default function ProfileScreen() {
                   >
                     {album ? (
                       <>
-                        <Text style={{ color: "white", fontSize: 12 }}>{album.name}</Text>
                         <Image
                           source={{ uri: album.image }}
                           style={styles.album}
                           resizeMode="cover"
                         />
+                       <Text style={{ color: "white", fontSize: 12, textAlign: "center",}}>{album.name}</Text>
                       </>
                     ) : (
                       <View style={styles.emptyAlbum}>
@@ -542,13 +578,13 @@ export default function ProfileScreen() {
                     }}
                   >
                     {artist ? (
-                      <>
-                        <Text style={{ color: "white", fontSize: 12 }}>{artist.name}</Text>
+                      <>                        
                         <Image
                           source={{ uri: artist.image }}
                           style={styles.artist}
                           resizeMode="cover"
                         />
+                        <Text style={{ color: "white", fontSize: 12, textAlign:"center" }}>{artist.name}</Text>
                       </>
                     ) : (
                       <View style={styles.emptyArtist}>
@@ -671,10 +707,10 @@ const styles = StyleSheet.create({
   profileInfoContainer: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 15,
+    paddingHorizontal: 10,
     marginTop: 20,
   },
-  profileImage: { width: 80, height: 80, borderRadius: 40, marginRight: 10 },
+  profileImage: { width: 90, height: 90, borderRadius: 50, marginRight: 10 },
 
   statsContainer: {
     flexDirection: "row",
@@ -723,6 +759,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-evenly",
     flexWrap: "wrap",
     marginVertical: 10,
+  },
+  album: {
+    width: 90,
+    height: 90,
+    borderRadius: 5,
+    margin: 5,
+  },
+  artist: {
+    width: 90,
+    height: 90,
+    borderRadius: 40,
+    margin: 5,
   },
 
   emptyAlbum: {
