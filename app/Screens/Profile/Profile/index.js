@@ -90,6 +90,27 @@ export default function ProfileScreen() {
     }));
   };
   
+  const handleDeleteReview = async (reviewId) => {
+    try {
+      const response = await fetch(
+        `http://192.168.1.102:8765/review/delete/${reviewId}`,
+        {
+          method: "DELETE",
+        }
+      );
+      if (response.ok) {
+        setReviews((prevReviews) =>
+          prevReviews.filter((review) => review.id !== reviewId)
+        );
+        setModalVisible(false);
+      } else {
+        Alert.alert("Error", "Failed to delete review");
+      }
+    } catch (error) {
+      console.error("Error deleting review:", error);
+      Alert.alert("Error", "An error occurred while deleting the review");
+    }
+  };
   
   const fetchUsersReviews = async () => {
     try {
@@ -117,12 +138,7 @@ export default function ProfileScreen() {
       fetchUsersReviews();
     }
   }, [accessToken]);
-  // 🔍 TEST: Reviewlar console'a yazdırılıyor mu?
-useEffect(() => {
-  console.log("📢 Güncellenen Reviews State:", reviews);
-}, [reviews]); // Reviews değiştikçe log bas
-  
-  
+
   const fetchAlbumImages = async (reviewsData) => {
     let images = {};
     
@@ -172,66 +188,66 @@ useEffect(() => {
   const getUserFavoritesImages = async (accessToken, userId) => {
     try {
       console.log(`🔍 Favoriler çekiliyor: userId=${userId}`);
-
+  
       const response = await axios.get(`http://192.168.1.102:8765/favorite/user/${userId}/all`);
-
+  
       if (!response || !response.data || !Array.isArray(response.data)) {
         console.log("ℹ Kullanıcının favorisi bulunamadı veya geçersiz veri formatı.");
         return [];
       }
-
+  
       const favorites = response.data;
-
+  
       if (favorites.length === 0) {
         console.log("ℹ Kullanıcının favorisi yok.");
         return [];
       }
-
+  
       console.log("✅ Favoriler başarıyla alındı:", favorites);
-
+  
       const images = [];
-
+  
       for (const favorite of favorites) {
         const { type, spotifyId } = favorite;
-
+  
         if (!type || !spotifyId) {
           console.warn(`⚠ Geçersiz favori öğesi atlandı:`, favorite);
           continue;
         }
-
+  
         try {
           const url = `https://api.spotify.com/v1/${type}s/${spotifyId}`;
           console.log(`🔄 Spotify'dan çekiliyor: ${url}`);
-
+  
           const spotifyResponse = await fetch(url, {
             headers: { Authorization: `Bearer ${accessToken}` },
           });
-
+  
           if (!spotifyResponse.ok) {
             console.warn(`⚠ Spotify API hatası: ${spotifyResponse.status} - ${spotifyId}`);
             continue;
           }
-
+  
           const data = await spotifyResponse.json();
-
+  
           if (!data || !data.name) {
             console.warn(`⚠ Spotify'dan geçersiz veri geldi:`, data);
             continue;
           }
-
+  
           images.push({
             id: spotifyId,
             name: data.name,
             image: data.images?.[0]?.url || null,
             type,
           });
-
+  
           console.log(`✅ ${spotifyId} için resim başarıyla çekildi.`);
         } catch (error) {
           console.error(`❌ Spotify API çağrısı başarısız (${spotifyId}):`, error);
         }
       }
-
+  
       console.log("✅ Favori görselleri başarıyla çekildi:", images);
       return images;
     } catch (error) {
@@ -330,6 +346,8 @@ useEffect(() => {
     setProfile(updatedProfile);
     setModalVisible(false);
   };
+  
+  
 
   const ReviewCard = ({
     review,
@@ -419,9 +437,7 @@ useEffect(() => {
         </Swipeable>
       </GestureHandlerRootView>
     ); 
-    
   };
-  
 
   return (
     <>
@@ -543,115 +559,80 @@ useEffect(() => {
                 )
               )}
             </View>
-  
-            <View style={styles.separator} />
-            <Text style={styles.favoriteTitle}>REVIEWS</Text>
           </>
-        }
-        
+        }     
       />
   
       {/* ✅ Reviews Modal (Doğru Çalışan) */}
       <Modal visible={reviewsModalVisible} animationType="slide" transparent={true}>
-  <View style={styles.modalBackground}>
-    <View style={styles.reviewModal}>
-      <View style={styles.modalHeader}>
-        <TouchableOpacity onPress={() => setReviewsModalVisible(false)}>
-          <Ionicons name="arrow-back" size={24} color="white" />
+      <Modal
+  animationType="slide"
+  transparent={true}
+  visible={modalVisible}
+  onRequestClose={() => {
+    setModalVisible(!modalVisible);
+  }}
+>
+  <View style={styles.centeredView}>
+    <View style={styles.modalView}>
+      <Text style={styles.modalText}>
+        Are you sure you want to delete your review?
+      </Text>
+      <View style={styles.modalButtons}>
+        <TouchableOpacity
+          style={[styles.button, styles.buttonYes]}
+          onPress={() => handleDeleteReview(selectedReviewId)}
+        >
+          <Text style={styles.textStyle}>Yes</Text>
         </TouchableOpacity>
-        <Text style={styles.modalTitle}>Reviews</Text>
+        <TouchableOpacity
+          style={[styles.button, styles.buttonNo]}
+          onPress={() => setModalVisible(!modalVisible)}
+        >
+          <Text style={styles.textStyle}>No</Text>
+        </TouchableOpacity>
       </View>
-
-      {loading ? (
-        <ActivityIndicator size="large" color="white" />
-      ) : reviews.length > 0 ? (
-        <FlatList
-          data={reviews}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => (
-            <View style={styles.reviewContainer}>
-              {albumImages[item.spotifyId] ? (
-                <Image source={{ uri: albumImages[item.spotifyId] }} style={styles.albumCover} />
-              ) : (
-                <View style={styles.placeholder}>
-                  <Ionicons name="image-outline" size={40} color="gray" />
-                </View>
-              )}
-
-              <View style={styles.reviewContent}>
-                <Text style={styles.userName}>User {album.userId}</Text>
-                <Text style={styles.reviewDate}>
-                  {new Date(item.createdAt).toDateString()}
-                </Text>
-                <Text style={styles.reviewText}>{item.comment}</Text>
-
-                <View style={styles.ratingContainer}>
-                  {[...Array(5)].map((_, i) => (
-                    <Ionicons
-                      key={i}
-                      name={i < item.rating ? "star" : "star-outline"}
-                      size={16}
-                      color="#FFD700"
-                    />
-                  ))}
-                </View>
-
-                <TouchableOpacity onPress={() => toggleLike(item.id)}>
-                  <View style={styles.likeContainer}>
-                    <Ionicons
-                      name={likedReviews[item.id] ? "heart" : "heart-outline"}
-                      size={20}
-                      color={likedReviews[item.id] ? "red" : "white"}
-                    />
-                    <Text style={styles.likeText}>
-                      {likedReviews[item.id] ? "Beğenildi" : "Beğen"}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        />
-      ) : (
-        <Text style={{ color: "gray", textAlign: "center", marginTop: 10 }}>
-          Henüz bir review yok.
-        </Text>
-      )}
     </View>
   </View>
 </Modal>
-  
-      {/* ✅ Silme Modalı (Tamamen Çalışıyor) */}
-      <Modal visible={modalVisible} animationType="slide" transparent={true}>
+
         <View style={styles.modalBackground}>
           <View style={styles.reviewModal}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <TouchableOpacity onPress={() => setReviewsModalVisible(false)}>
                 <Ionicons name="arrow-back" size={24} color="white" />
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Delete Review</Text>
+              <Text style={styles.modalTitle}>Reviews</Text>
             </View>
-            <Text style={{ color: "white", textAlign: "center", marginBottom: 15 }}>
-              Bu yorumu silmek istediğine emin misin?
-            </Text>
-  
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.button, styles.buttonYes]}
-                onPress={() => handleDeleteReview(selectedReviewId)}
-              >
-                <Text style={styles.textStyle}>Evet</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, styles.buttonNo]}
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.textStyle}>Hayır</Text>
-              </TouchableOpacity>
-            </View>
+
+            {loading ? (
+              <ActivityIndicator size="large" color="white" />
+            ) : reviews.length > 0 ? (
+              <FlatList
+  data={reviews}
+  keyExtractor={(item) => item.id.toString()}
+  renderItem={({ item }) => (
+    <ReviewCard
+      review={item}
+      albumImage={albumImages[item.spotifyId]}
+      likedReviews={likedReviews}
+      toggleLike={toggleLike}
+      setModalVisible={setModalVisible}
+      setSelectedReviewId={setSelectedReviewId}
+    />
+  )}
+/>
+
+            ) : (
+              <Text style={{ color: "gray", textAlign: "center", marginTop: 10 }}>
+                Henüz bir review yok.
+              </Text>
+            )}
           </View>
         </View>
       </Modal>
+  
+      
 
       <Modal visible={searchModalVisible} animationType="fade" transparent={true}>
         <View style={styles.modalBackground}>
@@ -672,203 +653,6 @@ useEffect(() => {
           </View>
         </View>
       </Modal>
-
-    </>
-  );
-  
-  
-
-  
-
-  // Modal Bileşeni
-  const renderSearchModal = () => (
-    <Modal visible={searchModalVisible} animationType="fade" transparent={true}>
-      <View style={styles.modalBackground}>
-        <View style={styles.searchModal}>
-          <TextInput 
-            style={styles.input} 
-            placeholder="Search..." 
-            onChangeText={handleSearch} 
-            value={searchText} 
-          />
-          <FlatList
-            data={searchResults}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity onPress={() => handleSelectItem(item)} style={styles.resultItem}>
-                <Text style={styles.resultText}>{item.name}</Text>
-              </TouchableOpacity>
-            )}
-          />
-          <TouchableOpacity onPress={() => setSearchModalVisible(false)} style={styles.closeButton}>
-            <Text style={styles.closeButtonText}>Close</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  // Profil Bilgileri Bileşeni
-  const renderProfileInfo = () => (
-    <View style={styles.profileInfoContainer}>
-      {profile.profileImage ? (
-        <Image source={{ uri: profile.profileImage }} style={styles.profileImage} />
-      ) : (
-        <Ionicons name="person-circle-outline" size={80} color="gray" />
-      )}
-      <View style={styles.statsContainer}>
-        <TouchableOpacity style={styles.statItem}>
-          <Text style={styles.statNumber}>0</Text>
-          <Text style={styles.statLabel}>Reviews</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.statItem} onPress={() => console.log("Following clicked")}>
-          <Text style={styles.statNumber}>{Math.floor(Math.random() * 500)}</Text>
-          <Text style={styles.statLabel}>Following</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.statItem} onPress={() => console.log("Followers clicked")}>
-          <Text style={styles.statNumber}>{Math.floor(Math.random() * 1000)}</Text>
-          <Text style={styles.statLabel}>Followers</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  // Bio ve Lokasyon Bileşeni
-  const renderBioAndLocation = () => (
-    <View style={styles.bioContainer}>
-      <Text style={styles.username}>{profile.username}</Text>
-      <Text style={styles.bio}>{profile.bio}</Text>
-      <View style={styles.locationLinkContainer}>
-        <Text style={styles.location}>
-          <Ionicons name="location-outline" size={16} color="gray" /> {profile.location}
-        </Text>
-        <Text style={styles.separator1}> | </Text>
-        <Text style={styles.link}>
-          <Ionicons name="link-outline" size={16} color="gray" /> {profile.link}
-        </Text>
-      </View>
-    </View>
-  );
-
-  // Favori Albümler Bileşeni
-  const renderFavoriteAlbums = () => (
-    <>
-      <Text style={styles.favoriteTitle}>FAVORITE ALBUMS</Text>
-      <View style={styles.gridContainer}>
-        {[...profile.favoriteAlbums, ...Array(4 - profile.favoriteAlbums.length).fill(null)].map(
-          (album, index) => (
-            <TouchableOpacity
-              key={index}
-              onPress={() => {
-                setSelectedCategory("albums");
-                setSelectedIndex(index);
-                setSearchModalVisible(true);
-              }}
-            >
-              {album ? (
-                <>
-                  <Text style={{ color: "white", fontSize: 12 }}>{album.name}</Text>
-                  <Image
-                    source={{ uri: album.image }}
-                    style={styles.album}
-                    resizeMode="cover"
-                  />
-                </>
-              ) : (
-                <View style={styles.emptyAlbum}>
-                  <Ionicons name="add" size={40} color="white" />
-                </View>
-              )}
-            </TouchableOpacity>
-          )
-        )}
-      </View>
-    </>
-  );
-
-  // Favori Sanatçılar Bileşeni
-  const renderFavoriteArtists = () => (
-    <>
-      <Text style={styles.favoriteTitle}>FAVORITE ARTISTS</Text>
-      <View style={styles.gridContainer}>
-        {[...profile.favoriteArtists, ...Array(4 - profile.favoriteArtists.length).fill(null)].map(
-          (artist, index) => (
-            <TouchableOpacity
-              key={index}
-              onPress={() => {
-                setSelectedCategory("artists");
-                setSelectedIndex(index);
-                setSearchModalVisible(true);
-              }}
-            >
-              {artist ? (
-                <>
-                  <Text style={{ color: "white", fontSize: 12 }}>{artist.name}</Text>
-                  <Image
-                    source={{ uri: artist.image }}
-                    style={styles.artist}
-                    resizeMode="cover"
-                  />
-                </>
-              ) : (
-                <View style={styles.emptyArtist}>
-                  <Ionicons name="add" size={40} color="white" />
-                </View>
-              )}
-            </TouchableOpacity>
-          )
-        )}
-      </View>
-    </>
-  );
-
-  // Ana Render
-  return (
-    <>
-      <FlatList
-        style={styles.container}
-        ListHeaderComponent={
-          <>
-            <View style={styles.header}>
-              <Text style={styles.headerText}>Profile</Text>
-              <TouchableOpacity
-                style={styles.settingsButton}
-                onPress={() => router.push("/Screens/Profile/AuthenticationSettings")}
-              >
-                <Ionicons name="settings-outline" size={24} color="white" />
-              </TouchableOpacity>
-            </View>
-  
-            {renderProfileInfo()}
-            {renderBioAndLocation()}
-  
-            <View style={styles.separator} />
-            {renderFavoriteAlbums()}
-  
-            <View style={styles.separator} />
-            {renderFavoriteArtists()}
-  
-            <View style={styles.separator} />
-            <Text style={styles.favoriteTitle}>REVIEWS</Text>
-          </>
-        }
-        data={reviews}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => (
-          <ReviewCard
-            review={item}
-            albumImage={albumImages[item.spotifyId]}
-            likedReviews={likedReviews}
-            toggleLike={toggleLike}
-            setModalVisible={setModalVisible}
-            setSelectedReviewId={setSelectedReviewId}
-          />
-        )}
-      />
-  
-      {renderSearchModal()}
     </>
   );
 }
@@ -1043,6 +827,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 10,
   },
+  rating: {
+    flexDirection: "row",
+  },
   likeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1050,5 +837,77 @@ const styles = StyleSheet.create({
   likeText: {
     color: 'white',
     marginLeft: 5,
+  },
+  deleteButton: {
+    justifyContent: "center",
+    alignItems: "center",
+    width: 80,
+    height: "100%",
+  },
+  centeredView: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 22,
+  },
+  modalView: {
+    margin: 20,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 35,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalText: {
+    marginBottom: 15,
+    textAlign: "center",
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  button: {
+    borderRadius: 20,
+    padding: 10,
+    elevation: 2,
+    width: "40%",
+    alignItems: "center",
+  },
+  buttonYes: {
+    backgroundColor: "#FF0000",
+  },
+  buttonNo: {
+    backgroundColor: "#2196F3",
+  },
+  textStyle: {
+    color: "white",
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  deleteSwipeContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "red",
+    width: 130,
+    height: "75%",
+    borderTopRightRadius: 10, // Rounded on the right
+    borderBottomRightRadius: 10, // Rounded on the right
+    borderTopLeftRadius: 0, // No border radius on the left
+    borderBottomLeftRadius: 0, // No border radius on the left
+    marginRight: 10,
+  },
+  deleteText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "bold",
   },
 });
