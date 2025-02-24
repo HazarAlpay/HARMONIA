@@ -8,6 +8,7 @@ import {
   FlatList,
   Modal,
   TextInput,
+  RefreshControl,
   ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -45,6 +46,9 @@ export default function ProfileScreen() {
   const [accessToken, setAccessToken] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("albums");
   const [selectedIndex, setSelectedIndex] = useState(null);
+
+  const [refreshing, setRefreshing] = useState(false); // Profil yenileme state
+  const [reviewsRefreshing, setReviewsRefreshing] = useState(false); // Reviews modal yenileme state
 
   const [reviews, setReviews] = useState([]);
   const [reviewCount, setReviewCount] = useState(0);
@@ -97,18 +101,17 @@ export default function ProfileScreen() {
   const handleDeleteReview = async (reviewId) => {
     try {
       const response = await fetch(
-        `http://192.168.1.102:8765/review/delete/${reviewId}`,
+        `http:/172.20.10.8:8765/review/delete/${reviewId}`,
         {
           method: "DELETE",
         }
       );
       if (response.ok) {
-        setReviews((prevReviews) =>
-          prevReviews.filter((review) => review.id !== reviewId)
-        );
-        setModalVisible(false);
+        setReviews((prevReviews) => prevReviews.filter((review) => review.id !== reviewId));
+        Alert.alert("Başarılı", "Review silindi.");
+        fetchUsersReviews(); // Silindikten sonra yenile
       } else {
-        Alert.alert("Error", "Failed to delete review");
+        Alert.alert("Hata", "Review silinemedi.");
       }
     } catch (error) {
       console.error("Error deleting review:", error);
@@ -118,9 +121,10 @@ export default function ProfileScreen() {
   
   const fetchUsersReviews = async () => {
     try {
+      setReviewsRefreshing(true);
       console.log("🔍 Kullanıcının reviewları getiriliyor...");
       
-      const response = await fetch(`http://192.168.1.102:8765/review/get-reviews/user/${userId}`);
+      const response = await fetch(`http://172.20.10.8:8765/review/get-reviews/user/${userId}`);
       const data = await response.json();
       setReviews(data.content || []);
       setReviewCount(data.content ? data.content.length : 0);
@@ -133,6 +137,8 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error("❌ Reviewları getirirken hata oluştu:", error);
       setLoading(false);
+    } finally {
+      setReviewsRefreshing(false); // Yenileme tamamlandı
     }
   };
   
@@ -142,6 +148,22 @@ export default function ProfileScreen() {
       fetchUsersReviews();
     }
   }, [accessToken]);
+
+
+  const onRefreshReviews = () => {
+    fetchUsersReviews();
+  };
+
+  const onRefreshProfile = async () => {
+    setRefreshing(true); // Yenileme işlemi başladı
+    try {
+      await fetchProfileAndFavorites(); // Profil ve favorileri yeniden çek
+    } catch (error) {
+      console.error("❌ Profil yenilenirken hata oluştu:", error);
+    } finally {
+      setRefreshing(false); // Yenileme işlemi tamamlandı
+    }
+  };
 
   const fetchAlbumImages = async (reviewsData) => {
     let images = {};
@@ -177,7 +199,7 @@ export default function ProfileScreen() {
   // Favori Ekleme
   const addFavorite = async (userId, spotifyId, type) => {
     try {
-      await axios.post("http://192.168.1.102:8765/favorite/add-favorite", {
+      await axios.post("http://172.20.10.8:8765/favorite/add-favorite", {
         userId,
         spotifyId,
         type,
@@ -193,7 +215,7 @@ export default function ProfileScreen() {
     try {
       console.log(`🔍 Favoriler çekiliyor: userId=${userId}`);
   
-      const response = await axios.get(`http://192.168.1.102:8765/favorite/user/${userId}/all`);
+      const response = await axios.get(`http://172.20.10.8:8765/favorite/user/${userId}/all`);
   
       if (!response || !response.data || !Array.isArray(response.data)) {
         console.log("ℹ Kullanıcının favorisi bulunamadı veya geçersiz veri formatı.");
@@ -262,46 +284,53 @@ export default function ProfileScreen() {
       return [];
     }
   };
-  // Profil ve Favorileri Çekme
-  useEffect(() => {
-    const fetchProfileAndFavorites = async () => {
-      try {
-        console.log("⏳ Kullanıcı profili çekiliyor...");
-        const userData = await getUserProfile(userId);
-    
-        if (!userData) throw new Error("❌ Kullanıcı bilgisi alınamadı.");
-    
-        const token = await getAccessToken();
-        setAccessToken(token);
-    
-        console.log("⏳ Kullanıcı favorileri ve görselleri çekiliyor...");
-        const images = await getUserFavoritesImages(token, userId);
-    
-        console.log("✅ Favori görselleri çekildi:", images);
-    
-        const favoriteAlbumsData = images.filter(fav => fav.type === "album");
-        const favoriteArtistsData = images.filter(fav => fav.type === "artist");
-    
-        setProfile(prevProfile => ({
-          ...prevProfile,
-          username: userData.username || "Unknown",
-          bio: userData.bio || "No bio available",
-          location: userData.location || "Unknown location",
-          link: userData.link || "Unknown link",
-          profileImage: userData.profileImage || "https://cdn-icons-png.flaticon.com/512/149/149071.png",
-          favoriteAlbums: favoriteAlbumsData.length > 0 ? favoriteAlbumsData : prevProfile.favoriteAlbums,
-          favoriteArtists: favoriteArtistsData.length > 0 ? favoriteArtistsData : prevProfile.favoriteArtists,
-        }));
-    
-        console.log("✅ Güncellenmiş profil state:", profile);
-    
-      } catch (error) {
-        console.error("❌ Kullanıcı veya favoriler alınamadı:", error);
-      }
-    };
+// Profil ve Favorileri Çekme
+const fetchProfileAndFavorites = async () => {
+  try {
+    console.log("⏳ Kullanıcı profili çekiliyor...");
+    const userData = await getUserProfile(userId);
 
-    fetchProfileAndFavorites();
-  }, []);
+    if (!userData) throw new Error("❌ Kullanıcı bilgisi alınamadı.");
+
+    const token = await getAccessToken();
+    setAccessToken(token);
+
+    console.log("⏳ Kullanıcı favorileri ve görselleri çekiliyor...");
+    const images = await getUserFavoritesImages(token, userId);
+
+    console.log("✅ Favori görselleri çekildi:", images);
+
+    const favoriteAlbumsData = images.filter((fav) => fav.type === "album");
+    const favoriteArtistsData = images.filter((fav) => fav.type === "artist");
+
+    setProfile((prevProfile) => ({
+      ...prevProfile,
+      username: userData.username || "Unknown",
+      bio: userData.bio || "No bio available",
+      location: userData.location || "Unknown location",
+      link: userData.link || "Unknown link",
+      profileImage:
+        userData.profileImage ||
+        "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+      favoriteAlbums:
+        favoriteAlbumsData.length > 0
+          ? favoriteAlbumsData
+          : prevProfile.favoriteAlbums,
+      favoriteArtists:
+        favoriteArtistsData.length > 0
+          ? favoriteArtistsData
+          : prevProfile.favoriteArtists,
+    }));
+
+    console.log("✅ Güncellenmiş profil state:", profile);
+  } catch (error) {
+    console.error("❌ Kullanıcı veya favoriler alınamadı:", error);
+  }
+};
+
+useEffect(() => {
+  fetchProfileAndFavorites();
+}, []);
 
   useEffect(() => {
     const updateFavoritesImages = async () => {
@@ -479,6 +508,14 @@ export default function ProfileScreen() {
     <>
       <FlatList
         style={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing} // Yenileme işlemi devam ediyorsa true, değilse false
+            onRefresh={onRefreshProfile} // Yenileme işlemi tetiklendiğinde çağrılacak fonksiyon
+            colors={["#1DB954"]} // iOS için refresh spinner rengi
+            tintColor="#1DB954" // iOS için refresh spinner rengi
+          />
+        }
         ListHeaderComponent={
           <>
             <View style={styles.header}>
@@ -641,23 +678,27 @@ export default function ProfileScreen() {
               <Text style={styles.modalTitle}>Reviews</Text>
             </View>
 
-            {loading ? (
+            {reviewsRefreshing ? (
               <ActivityIndicator size="large" color="white" />
             ) : reviews.length > 0 ? (
               <FlatList
-  data={reviews}
-  keyExtractor={(item) => item.id.toString()}
-  renderItem={({ item }) => (
-    <ReviewCard
-      review={item}
-      albumImage={albumImages[item.spotifyId]}
-      likedReviews={likedReviews}
-      toggleLike={toggleLike}
-      setModalVisible={setModalVisible}
-      setSelectedReviewId={setSelectedReviewId}
-    />
-  )}
-/>
+                  data={reviews}
+                  keyExtractor={(item) => item.id.toString()}
+                  refreshControl={
+                    <RefreshControl refreshing={reviewsRefreshing} onRefresh={onRefreshReviews} colors={["#1DB954"]} 
+                    tintColor="#1DB954" />
+                  }
+                  renderItem={({ item }) => (
+                    <ReviewCard
+                      review={item}
+                      albumImage={albumImages[item.spotifyId]}
+                      likedReviews={likedReviews}
+                      toggleLike={toggleLike}
+                      setModalVisible={setModalVisible}
+                      setSelectedReviewId={setSelectedReviewId}
+                    />
+                  )}
+                />
 
             ) : (
               <Text style={{ color: "gray", textAlign: "center", marginTop: 10 }}>
