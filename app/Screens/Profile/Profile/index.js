@@ -50,6 +50,10 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false); // Profil yenileme state
   const [reviewsRefreshing, setReviewsRefreshing] = useState(false); // Reviews modal yenileme state
 
+  const [followersModalVisible, setFollowersModalVisible] = useState(false);
+  const [followingModalVisible, setFollowingModalVisible] = useState(false);
+
+
   const [reviews, setReviews] = useState([]);
   const [reviewCount, setReviewCount] = useState(0);
   const [reviewsModalVisible, setReviewsModalVisible] = useState(false); 
@@ -62,6 +66,7 @@ export default function ProfileScreen() {
   const SPOTIFY_ALBUM_API_URL = "https://api.spotify.com/v1/albums";
   const SPOTIFY_ARTIST_API_URL = "https://api.spotify.com/v1/artists";
   
+  const BASE_URL = "http://172.20.10.8:8765";
 
 
   // Spotify Access Token Alma
@@ -101,7 +106,7 @@ export default function ProfileScreen() {
   const handleDeleteReview = async (reviewId) => {
     try {
       const response = await fetch(
-        `http:/172.20.10.8:8765/review/delete/${reviewId}`,
+        `${BASE_URL}/review/delete/${reviewId}`,
         {
           method: "DELETE",
         }
@@ -124,7 +129,7 @@ export default function ProfileScreen() {
       setReviewsRefreshing(true);
       console.log("🔍 Kullanıcının reviewları getiriliyor...");
       
-      const response = await fetch(`http://172.20.10.8:8765/review/get-reviews/user/${userId}`);
+      const response = await fetch(`${BASE_URL}/review/get-reviews/user/${userId}`);
       const data = await response.json();
       setReviews(data.content || []);
       setReviewCount(data.content ? data.content.length : 0);
@@ -199,7 +204,7 @@ export default function ProfileScreen() {
   // Favori Ekleme
   const addFavorite = async (userId, spotifyId, type) => {
     try {
-      await axios.post("http://172.20.10.8:8765/favorite/add-favorite", {
+      await axios.post(`${BASE_URL}/favorite/add-favorite`, {
         userId,
         spotifyId,
         type,
@@ -209,20 +214,27 @@ export default function ProfileScreen() {
       console.error("❌ Favori eklenirken hata oluştu:", error);
     }
   };
+  
 
   // Kullanıcının Favori Görsellerini Alma
   const getUserFavoritesImages = async (accessToken, userId) => {
     try {
       console.log(`🔍 Favoriler çekiliyor: userId=${userId}`);
   
-      const response = await axios.get(`http://172.20.10.8:8765/favorite/user/${userId}/all`);
-  
-      if (!response || !response.data || !Array.isArray(response.data)) {
-        console.log("ℹ Kullanıcının favorisi bulunamadı veya geçersiz veri formatı.");
-        return [];
-      }
-  
-      const favorites = response.data;
+      // İki ayrı API çağrısı yap
+    const [albumsResponse, artistsResponse] = await Promise.all([
+      axios.get(`${BASE_URL}/favorite/user/${userId}/album?page=0`),
+      axios.get(`${BASE_URL}/favorite/user/${userId}/artist?page=0`),
+    ]);
+
+    console.log("📌 API Yanıtları:", { albumsResponse, artistsResponse });
+
+     // `data.content` dizisini alıyoruz
+    const albums = Array.isArray(albumsResponse?.data?.content) ? albumsResponse.data.content : [];
+    const artists = Array.isArray(artistsResponse?.data?.content) ? artistsResponse.data.content : [];
+
+    // Favorileri birleştir
+    const favorites = [...albums, ...artists];
   
       if (favorites.length === 0) {
         console.log("ℹ Kullanıcının favorisi yok.");
@@ -377,7 +389,7 @@ useEffect(() => {
   }, []);
 
   // Arama İşlemi
-  const handleSearch = debounce(async (text) => {
+  const handleSearch = async (text) => {
     setSearchText(text);
     if (!text.trim()) {
       setSearchResults([]);
@@ -394,23 +406,81 @@ useEffect(() => {
     } catch (error) {
       console.error("Search Error:", error);
     }
-  }, 500);
+  };
 
   // Arama Sonucu Seçme
   const handleSelectItem = async (item) => {
-    const updatedProfile = { ...profile };
+    try {
+      const updatedProfile = { ...profile };
   
-    if (selectedCategory === "artists") {
-      updatedProfile.favoriteArtists[selectedIndex] = item;
-      await addFavorite(userId, item.id, "artist");
-    } else {
-      updatedProfile.favoriteAlbums[selectedIndex] = item;
-      await addFavorite(userId, item.id, "album");
+      if (selectedCategory === "artists") {
+        updatedProfile.favoriteArtists[selectedIndex] = item;
+        await addFavorite(userId, item.id, "artist");
+      } else {
+        updatedProfile.favoriteAlbums[selectedIndex] = item;
+        await addFavorite(userId, item.id, "album");
+      }
+  
+      setProfile(updatedProfile);
+      setSearchModalVisible(false); // Modal'ı kapat
+    } catch (error) {
+      console.error("Seçim yapılırken hata oluştu:", error);
     }
-  
-    setProfile(updatedProfile);
-    setModalVisible(false);
   };
+  
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  
+  const fetchFollowCounts = async () => {
+    try {
+      const followerResponse = await axios.get(`${BASE_URL}/user-follow/follower-count?userProfileId=1`);
+      const followingResponse = await axios.get(`${BASE_URL}/user-follow/following-count?userProfileId=1`);
+  
+      console.log("📥 Follower Count Response:", followerResponse.data);
+      console.log("📥 Following Count Response:", followingResponse.data);
+  
+      // Eğer backend doğru bir şekilde sayı döndürüyorsa, state'e ekleyelim
+      setFollowerCount(typeof followerResponse.data === "number" ? followerResponse.data : 0);
+      setFollowingCount(typeof followingResponse.data === "number" ? followingResponse.data : 0);
+    } catch (error) {
+      console.error("❌ API'den gelen hata:", error.response ? error.response.data : error.message);
+    }
+  };
+  
+  
+  // useEffect ile bileşen açıldığında çağır
+  useEffect(() => {
+    fetchFollowCounts();
+  }, []);
+
+  const [followers, setFollowers] = useState([]);
+  const [following, setFollowing] = useState([]);
+  
+  const fetchFollowers = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/user-follow/followers?userId=1`);
+      const data = await response.json();
+      setFollowers(data);
+    } catch (error) {
+      console.error("❌ Takipçiler alınırken hata oluştu:", error);
+    }
+  };
+  
+  const fetchFollowing = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/user-follow/followings?userId=1`);
+      const data = await response.json();
+      setFollowing(data);
+    } catch (error) {
+      console.error("❌ Takip edilenler alınırken hata oluştu:", error);
+    }
+  };
+  
+  // useEffect ile bileşen açıldığında çağır
+  useEffect(() => {
+    fetchFollowers();
+    fetchFollowing();
+  }, []);
   
   
 
@@ -540,13 +610,17 @@ useEffect(() => {
                   <Text style={styles.statLabel}>Reviews</Text>
                 </TouchableOpacity>
   
-                <TouchableOpacity style={styles.statItem} onPress={() => console.log("Following clicked")}>
-                  <Text style={styles.statNumber}>{Math.floor(Math.random() * 500)}</Text>
+                <TouchableOpacity style={styles.statItem} onPress={() => setFollowingModalVisible(true)}>
+                <Text style={styles.statNumber}>
+                  {typeof followingCount === "number" ? followingCount : "0"}
+                </Text>
                   <Text style={styles.statLabel}>Following</Text>
                 </TouchableOpacity>
   
-                <TouchableOpacity style={styles.statItem} onPress={() => console.log("Followers clicked")}>
-                  <Text style={styles.statNumber}>{Math.floor(Math.random() * 1000)}</Text>
+                <TouchableOpacity style={styles.statItem} onPress={() => setFollowersModalVisible(true)}>
+                <Text style={styles.statNumber}>
+                  {typeof followerCount === "number" ? followerCount : "0"}
+                </Text>
                   <Text style={styles.statLabel}>Followers</Text>
                 </TouchableOpacity>
               </View>
@@ -635,6 +709,53 @@ useEffect(() => {
           </>
         }     
       />
+
+{/* Followers Modal */}
+<Modal visible={followersModalVisible} animationType="slide" transparent={true}>
+  <View style={styles.modalBackgroundFollow}>
+    <View style={styles.modalContainerFollow}>
+      <TouchableOpacity onPress={() => setFollowersModalVisible(false)} style={styles.closeButtonFollow}>
+        <Ionicons name="close" size={24} color="white" />
+      </TouchableOpacity>
+      <Text style={styles.modalTitleFollow}>Followers</Text>
+      <FlatList
+        data={followers}
+        keyExtractor={(item) => item.userId.toString()}
+        renderItem={({ item }) => (
+          <View style={styles.userItemFollow}>
+            <Image source={{ uri: item.profileImage }} style={styles.userImageFollow} />
+            <Text style={styles.usernameFollow}>{item.username}</Text>
+          </View>
+        )}
+      />
+    </View>
+  </View>
+</Modal>
+
+{/* Following Modal */}
+<Modal visible={followingModalVisible} animationType="slide" transparent={true}>
+  <View style={styles.modalBackgroundFollow}>
+    <View style={styles.modalContainerFollow}>
+      <TouchableOpacity onPress={() => setFollowingModalVisible(false)} style={styles.closeButtonFollow}>
+        <Ionicons name="close" size={24} color="white" />
+      </TouchableOpacity>
+      <Text style={styles.modalTitleFollow}>Following</Text>
+      <FlatList
+        data={following}
+        keyExtractor={(item) => item.userId.toString()}
+        renderItem={({ item }) => (
+          <View style={styles.userItemFollow}>
+            <Image source={{ uri: item.profileImage }} style={styles.userImageFollow} />
+            <Text style={styles.usernameFollow}>{item.username}</Text>
+          </View>
+        )}
+      />
+    </View>
+  </View>
+</Modal>
+
+
+
   
       {/* ✅ Reviews Modal (Doğru Çalışan) */}
       <Modal visible={reviewsModalVisible} animationType="slide" transparent={true}>
@@ -712,24 +833,49 @@ useEffect(() => {
       
 
       <Modal visible={searchModalVisible} animationType="fade" transparent={true}>
-        <View style={styles.modalBackground}>
-          <View style={styles.searchModal}>
-            <TextInput style={styles.input} placeholder="Search..." onChangeText={handleSearch} value={searchText} />
-            <FlatList
-              data={searchResults}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity onPress={() => handleSelectItem(item)} style={styles.resultItem}>
-                  <Text style={styles.resultText}>{item.name}</Text>
-                </TouchableOpacity>
-              )}
-            />
+      <View style={styles.modalBackground}>
+        <View style={styles.searchModal}>
+          {/* Modal Header */}
+          <View style={styles.searchModalHeader}>
+            <Text style={styles.searchModalTitle}>Search {selectedCategory === "albums" ? "Albums" : "Artists"}</Text>
             <TouchableOpacity onPress={() => setSearchModalVisible(false)} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>Close</Text>
+              <Ionicons name="close" size={24} color="white" />
             </TouchableOpacity>
           </View>
+
+          {/* Search Input */}
+          <View style={styles.searchInputContainer}>
+            <Ionicons name="search-outline" size={20} color="gray" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search..."
+              placeholderTextColor="gray"
+              onChangeText={handleSearch}
+              value={searchText}
+              autoFocus={true}
+            />
+          </View>
+
+          {/* Search Results */}
+          <FlatList
+            data={searchResults}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <TouchableOpacity onPress={() => handleSelectItem(item)} style={styles.resultItem}>
+                <Image
+                  source={{ uri: item.images?.[0]?.url || "https://via.placeholder.com/50" }}
+                  style={styles.resultImage}
+                />
+                <Text style={styles.resultText}>{item.name}</Text>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={
+              <Text style={styles.noResultsText}>No results found.</Text>
+            }
+          />
         </View>
-      </Modal>
+      </View>
+    </Modal>
     </>
   );
 }
@@ -833,11 +979,72 @@ const styles = StyleSheet.create({
     margin: 5,
   },
 
-  searchModal: { width: "80%", backgroundColor: "#222", padding: 15, borderRadius: 10, alignItems: "center" },
-  input: { color: "white", borderBottomWidth: 1, borderBottomColor: "white", marginBottom: 10 },
-  resultText: { color: "white" },
-  closeButton: { color: "white", textAlign: "center", fontSize: 16, marginTop: 10 },
-  modalBackground: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.6)" },
+  modalBackground: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.8)", // Daha koyu bir arka plan
+  },
+  searchModal: {
+    width: "90%",
+    maxHeight: "80%",
+    backgroundColor: "#1E1E1E", // Modal arka plan rengi
+    borderRadius: 15,
+    padding: 15,
+  },
+  searchModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  searchModalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "white",
+  },
+  closeButton: {
+    padding: 5,
+  },
+  searchInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#333",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    marginBottom: 15,
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    color: "white",
+    fontSize: 16,
+    paddingVertical: 10,
+  },
+  resultItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#333",
+  },
+  resultImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 5,
+    marginRight: 10,
+  },
+  resultText: {
+    fontSize: 16,
+    color: "white",
+  },
+  noResultsText: {
+    color: "gray",
+    textAlign: "center",
+    marginTop: 20,
+  },
 
   container: {
     flex: 1,
@@ -999,4 +1206,43 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
   },
+    modalBackgroundFollow: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "rgba(0,0,0,0.6)",
+    },
+    modalContainerFollow: {
+      width: "80%",
+      backgroundColor: "#222",
+      padding: 20,
+      borderRadius: 10,
+      alignItems: "center",
+    },
+    modalTitleFollow: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: "white",
+      marginBottom: 10,
+    },
+    closeButtonFollow: {
+      position: "absolute",
+      top: 10,
+      right: 10,
+    },
+    userItemFollow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginVertical: 8,
+    },
+    userImageFollow: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      marginRight: 10,
+    },
+    usernameFollow: {
+      fontSize: 16,
+      color: "white",
+    },
 });
