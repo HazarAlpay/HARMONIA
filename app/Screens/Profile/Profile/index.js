@@ -17,7 +17,8 @@ import { getUserProfile } from "../../../api/backend";
 import { getAccessToken, searchArtists, searchAlbums } from "../../../api/spotify";
 import axios from "axios";
 import { GestureHandlerRootView, Swipeable } from "react-native-gesture-handler";
-import { debounce } from "lodash";
+import { Linking } from "react-native";
+import FontAwesome from "react-native-vector-icons/FontAwesome";
 
 import {
   CLIENT_ID,
@@ -27,7 +28,8 @@ import {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const userId = 1; // Şu anlık sabit, dinamik yapılabilir.
+  const userId = 1; //  Profilin sahibi (örneğin, görüntülenen profil) Şu anlık sabit
+  const [currentUserId, setCurrentUserId] = useState(2); // Şu anki kullanıcı
 
   const [profile, setProfile] = useState({
     username: "",
@@ -52,7 +54,6 @@ export default function ProfileScreen() {
 
   const [followersModalVisible, setFollowersModalVisible] = useState(false);
   const [followingModalVisible, setFollowingModalVisible] = useState(false);
-
 
   const [reviews, setReviews] = useState([]);
   const [reviewCount, setReviewCount] = useState(0);
@@ -372,6 +373,60 @@ useEffect(() => {
   
     updateFavoritesImages();
   }, [profile.favoriteAlbums, profile.favoriteArtists]);
+
+  const openSpotify = (item) => {
+    if (!item || !item.id) {
+      console.error("❌ Geçersiz öğe:", item);
+      return;
+    }
+  
+    const url = item.type === "album"
+      ? `https://open.spotify.com/album/${item.id}`
+      : `https://open.spotify.com/artist/${item.id}`;
+  
+    Linking.openURL(url).catch((err) =>
+      console.error("❌ Spotify açılırken hata oluştu:", err)
+    );
+  };
+
+  const handleAlbumOrArtistPress = (index, category) => {
+    if (currentUserId === userId) {
+      // Kullanıcı kendi profilinde, search modalını aç
+      setSelectedCategory(category);
+      setSelectedIndex(index);
+      setSearchModalVisible(true);
+    } else {
+      // Kullanıcı başka bir kullanıcının profilinde, resmi büyüt
+      const item = category === "albums" ? profile.favoriteAlbums[index] : profile.favoriteArtists[index];
+      setSelectedItem(item);
+      setImageModalVisible(true);
+    }
+  };
+
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+const [selectedItem, setSelectedItem] = useState(null);
+
+// Resmi büyütme modalı
+const ImageModal = () => (
+  <Modal visible={imageModalVisible} animationType="fade" transparent={true}>
+    <View style={styles.imageModalBackground}>
+      <TouchableOpacity style={styles.imageModalCloseButton} onPress={() => setImageModalVisible(false)}>
+        <Ionicons name="close" size={24} color="white" />
+      </TouchableOpacity>
+      <Image source={{ uri: selectedItem?.image }} style={styles.imageModalImage} />
+      <Text style={styles.imageModalText}>{selectedItem?.name}</Text>
+      
+      {/* Spotify Butonu */}
+      <TouchableOpacity
+        style={styles.spotifyButton}
+        onPress={() => openSpotify(selectedItem)}
+      >
+        <FontAwesome name="spotify" size={24} color="white" />
+        <Text style={styles.spotifyButtonText}>Open in Spotify</Text>
+      </TouchableOpacity>
+    </View>
+  </Modal>
+);
   
 
   // Access Token Çekme
@@ -459,7 +514,9 @@ useEffect(() => {
   const fetchFollowers = async () => {
     try {
       const response = await fetch(`${BASE_URL}/user-follow/followers?userId=1`);
-      const data = await response.json();
+      const text = await response.text(); // Önce yanıtı metin olarak al
+      console.log("API Yanıtı:", text); // Yanıtı konsola yazdır
+      const data = JSON.parse(text); // JSON'a çevir
       setFollowers(data);
     } catch (error) {
       console.error("❌ Takipçiler alınırken hata oluştu:", error);
@@ -469,7 +526,9 @@ useEffect(() => {
   const fetchFollowing = async () => {
     try {
       const response = await fetch(`${BASE_URL}/user-follow/followings?userId=1`);
-      const data = await response.json();
+      const text = await response.text(); // Önce yanıtı metin olarak al
+      console.log("API Yanıtı:", text); // Yanıtı konsola yazdır
+      const data = JSON.parse(text); // JSON'a çevir
       setFollowing(data);
     } catch (error) {
       console.error("❌ Takip edilenler alınırken hata oluştu:", error);
@@ -645,150 +704,142 @@ useEffect(() => {
             <View style={styles.separator} />
             <Text style={styles.favoriteTitle}>FAVORITE ALBUMS</Text>
             <View style={styles.gridContainer}>
-              {[...profile.favoriteAlbums, ...Array(4 - profile.favoriteAlbums.length).fill(null)].map(
-                (album, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    onPress={() => {
-                      setSelectedCategory("albums");
-                      setSelectedIndex(index);
-                      setSearchModalVisible(true);
-                    }}
-                  >
-                    {album ? (
-                      <>
-                        <Image
-                          source={{ uri: album.image }}
-                          style={styles.album}
-                          resizeMode="cover"
-                        />
-                       <Text style={{ color: "white", fontSize: 12, textAlign: "center",}}>{album.name}</Text>
-                      </>
-                    ) : (
-                      <View style={styles.emptyAlbum}>
-                        <Ionicons name="add" size={40} color="white" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                )
-              )}
-            </View>
-  
+            {[...profile.favoriteAlbums, ...Array(4 - profile.favoriteAlbums.length).fill(null)].map(
+              (album, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => handleAlbumOrArtistPress(index, "albums")}
+                >
+                  {album ? (
+                    <>
+                      <Image
+                        source={{ uri: album.image }}
+                        style={styles.album}
+                        resizeMode="cover"
+                      />
+                      <Text style={{ color: "white", fontSize: 12, textAlign: "center" }}>{album.name}</Text>
+                    </>
+                  ) : (
+                    <View style={styles.emptyAlbum}>
+                      <Ionicons name="add" size={40} color="white" />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )
+            )}
+          </View>
+
             {/* ✅ Favorite Artists */}
-            <View style={styles.separator} />
-            <Text style={styles.favoriteTitle}>FAVORITE ARTISTS</Text>
-            <View style={styles.gridContainer}>
-              {[...profile.favoriteArtists, ...Array(4 - profile.favoriteArtists.length).fill(null)].map(
-                (artist, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    onPress={() => {
-                      setSelectedCategory("artists");
-                      setSelectedIndex(index);
-                      setSearchModalVisible(true);
-                    }}
-                  >
-                    {artist ? (
-                      <>                        
-                        <Image
-                          source={{ uri: artist.image }}
-                          style={styles.artist}
-                          resizeMode="cover"
-                        />
-                        <Text style={{ color: "white", fontSize: 12, textAlign:"center" }}>{artist.name}</Text>
-                      </>
-                    ) : (
-                      <View style={styles.emptyArtist}>
-                        <Ionicons name="add" size={40} color="white" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                )
-              )}
+          <View style={styles.separator} />
+          <Text style={styles.favoriteTitle}>FAVORITE ALBUMS</Text>
+          <View style={styles.gridContainer}>
+            {[...profile.favoriteArtists, ...Array(4 - profile.favoriteArtists.length).fill(null)].map(
+              (artist, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => handleAlbumOrArtistPress(index, "artists")}
+                >
+                  {artist ? (
+                    <>
+                      <Image
+                        source={{ uri: artist.image }}
+                        style={styles.artist}
+                        resizeMode="cover"
+                      />
+                      <Text style={{ color: "white", fontSize: 12, textAlign: "center" }}>{artist.name}</Text>
+                    </>
+                  ) : (
+                    <View style={styles.emptyArtist}>
+                      <Ionicons name="add" size={40} color="white" />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )
+            )}
+          </View>
+                    </>
+                  }     
+                />
+
+        {/* Followers Modal */}
+        <Modal visible={followersModalVisible} animationType="slide" transparent={true}>
+          <View style={styles.modalBackgroundFollow}>
+            <View style={styles.modalContainerFollow}>
+              <TouchableOpacity onPress={() => setFollowersModalVisible(false)} style={styles.closeButtonFollow}>
+                <Ionicons name="close" size={24} color="white" />
+              </TouchableOpacity>
+              <Text style={styles.modalTitleFollow}>Followers</Text>
+              <FlatList
+                data={followers}
+                keyExtractor={(item) => item.userId.toString()}
+                renderItem={({ item }) => (
+                  <View style={styles.userItemFollow}>
+                    <Image source={{ uri: item.profileImage }} style={styles.userImageFollow} />
+                    <Text style={styles.usernameFollow}>{item.username}</Text>
+                  </View>
+                )}
+              />
             </View>
-          </>
-        }     
-      />
-
-{/* Followers Modal */}
-<Modal visible={followersModalVisible} animationType="slide" transparent={true}>
-  <View style={styles.modalBackgroundFollow}>
-    <View style={styles.modalContainerFollow}>
-      <TouchableOpacity onPress={() => setFollowersModalVisible(false)} style={styles.closeButtonFollow}>
-        <Ionicons name="close" size={24} color="white" />
-      </TouchableOpacity>
-      <Text style={styles.modalTitleFollow}>Followers</Text>
-      <FlatList
-        data={followers}
-        keyExtractor={(item) => item.userId.toString()}
-        renderItem={({ item }) => (
-          <View style={styles.userItemFollow}>
-            <Image source={{ uri: item.profileImage }} style={styles.userImageFollow} />
-            <Text style={styles.usernameFollow}>{item.username}</Text>
           </View>
-        )}
-      />
-    </View>
-  </View>
-</Modal>
+        </Modal>
 
-{/* Following Modal */}
-<Modal visible={followingModalVisible} animationType="slide" transparent={true}>
-  <View style={styles.modalBackgroundFollow}>
-    <View style={styles.modalContainerFollow}>
-      <TouchableOpacity onPress={() => setFollowingModalVisible(false)} style={styles.closeButtonFollow}>
-        <Ionicons name="close" size={24} color="white" />
-      </TouchableOpacity>
-      <Text style={styles.modalTitleFollow}>Following</Text>
-      <FlatList
-        data={following}
-        keyExtractor={(item) => item.userId.toString()}
-        renderItem={({ item }) => (
-          <View style={styles.userItemFollow}>
-            <Image source={{ uri: item.profileImage }} style={styles.userImageFollow} />
-            <Text style={styles.usernameFollow}>{item.username}</Text>
+        {/* Following Modal */}
+        <Modal visible={followingModalVisible} animationType="slide" transparent={true}>
+          <View style={styles.modalBackgroundFollow}>
+            <View style={styles.modalContainerFollow}>
+              <TouchableOpacity onPress={() => setFollowingModalVisible(false)} style={styles.closeButtonFollow}>
+                <Ionicons name="close" size={24} color="white" />
+              </TouchableOpacity>
+              <Text style={styles.modalTitleFollow}>Following</Text>
+              <FlatList
+                data={following}
+                keyExtractor={(item) => item.userId.toString()}
+                renderItem={({ item }) => (
+                  <View style={styles.userItemFollow}>
+                    <Image source={{ uri: item.profileImage }} style={styles.userImageFollow} />
+                    <Text style={styles.usernameFollow}>{item.username}</Text>
+                  </View>
+                )}
+              />
+            </View>
           </View>
-        )}
-      />
-    </View>
-  </View>
-</Modal>
+        </Modal>
 
 
 
-  
-      {/* ✅ Reviews Modal (Doğru Çalışan) */}
-      <Modal visible={reviewsModalVisible} animationType="slide" transparent={true}>
-      <Modal
-  animationType="slide"
-  transparent={true}
-  visible={modalVisible}
-  onRequestClose={() => {
-    setModalVisible(!modalVisible);
-  }}
->
-  <View style={styles.centeredView}>
-    <View style={styles.modalView}>
-      <Text style={styles.modalText}>
-        Are you sure you want to delete your review?
-      </Text>
-      <View style={styles.modalButtons}>
-        <TouchableOpacity
-          style={[styles.button, styles.buttonYes]}
-          onPress={() => handleDeleteReview(selectedReviewId)}
+          
+              {/* ✅ Reviews Modal (Doğru Çalışan) */}
+              <Modal visible={reviewsModalVisible} animationType="slide" transparent={true}>
+              <Modal
+          animationType="slide"
+          transparent={true}
+          visible={modalVisible}
+          onRequestClose={() => {
+            setModalVisible(!modalVisible);
+          }}
         >
-          <Text style={styles.textStyle}>Yes</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.button, styles.buttonNo]}
-          onPress={() => setModalVisible(!modalVisible)}
-        >
-          <Text style={styles.textStyle}>No</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
+          <View style={styles.centeredView}>
+            <View style={styles.modalView}>
+              <Text style={styles.modalText}>
+                Are you sure you want to delete your review?
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonYes]}
+                  onPress={() => handleDeleteReview(selectedReviewId)}
+                >
+                  <Text style={styles.textStyle}>Yes</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonNo]}
+                  onPress={() => setModalVisible(!modalVisible)}
+                >
+                  <Text style={styles.textStyle}>No</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <View style={styles.modalBackground}>
           <View style={styles.reviewModal}>
@@ -876,6 +927,9 @@ useEffect(() => {
         </View>
       </View>
     </Modal>
+
+     {/* Image Modal */}
+     <ImageModal />
     </>
   );
 }
@@ -1244,5 +1298,41 @@ const styles = StyleSheet.create({
     usernameFollow: {
       fontSize: 16,
       color: "white",
+    },
+
+    imageModalBackground: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "rgba(0, 0, 0, 0.9)",
+    },
+    imageModalCloseButton: {
+      position: "absolute",
+      top: 40,
+      right: 20,
+      zIndex: 1,
+    },
+    imageModalImage: {
+      width: 300,
+      height: 300,
+      borderRadius: 10,
+    },
+    imageModalText: {
+      fontSize: 24,
+      color: "white",
+      marginTop: 20,
+    },
+    spotifyButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#1DB954", // Spotify yeşili
+      padding: 10,
+      borderRadius: 5,
+      marginTop: 20,
+    },
+    spotifyButtonText: {
+      color: "white",
+      fontSize: 16,
+      marginLeft: 10,
     },
 });
