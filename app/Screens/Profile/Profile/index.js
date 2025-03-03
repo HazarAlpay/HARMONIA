@@ -67,7 +67,7 @@ export default function ProfileScreen() {
   const SPOTIFY_ALBUM_API_URL = "https://api.spotify.com/v1/albums";
   const SPOTIFY_ARTIST_API_URL = "https://api.spotify.com/v1/artists";
   
-  const BASE_URL = "http://172.20.10.8:8765";
+  const BASE_URL = "http://192.168.1.21:8765";
 
 
   // Spotify Access Token Alma
@@ -135,6 +135,29 @@ export default function ProfileScreen() {
       setReviews(data.content || []);
       setReviewCount(data.content ? data.content.length : 0);
       console.log("API Yanıtı:", data); // API yanıtını konsola yazdır
+
+      // Albüm adlarını Spotify API'sinden çek
+    const reviewsWithAlbumNames = await Promise.all(
+      data.content.map(async (review) => {
+        try {
+          const spotifyResponse = await fetch(`${SPOTIFY_API_URL}/${review.spotifyId}`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          const spotifyData = await spotifyResponse.json();
+          return {
+            ...review,
+            albumName: spotifyData.name, // Albüm adını ekle
+          };
+        } catch (error) {
+          console.error(`❌ Albüm adı çekme hatası (${review.spotifyId}):`, error);
+          return review;
+        }
+      })
+    );
+
+    setReviews(reviewsWithAlbumNames || []);
+    setReviewCount(reviewsWithAlbumNames ? reviewsWithAlbumNames.length : 0);
+    console.log("API Yanıtı:", reviewsWithAlbumNames);
 
       // Albüm resimlerini çek
       const images = await fetchAlbumImages(data.content || []);
@@ -596,7 +619,7 @@ const ImageModal = () => (
   
             <View style={styles.reviewContent}>
               <Text style={styles.userName}>
-                {review.username || `User ${review.userId}`}
+                {review.albumName || `User ${review.spotifyId}`}
               </Text>
               <Text style={styles.reviewDate}>
                 {new Date(review.createdAt).toDateString()}
@@ -1167,15 +1190,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'gray',
     marginBottom: 5,
+    marginTop:5,
   },
   reviewText: {
     fontSize: 14,
     color: 'lightgray',
-    marginBottom: 10,
+    marginBottom: 3,
   },
   ratingContainer: {
     flexDirection: 'row',
-    marginBottom: 10,
+    marginBottom: 20,
   },
   rating: {
     flexDirection: "row",
@@ -1183,10 +1207,12 @@ const styles = StyleSheet.create({
   likeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop:5,
   },
   likeText: {
     color: 'white',
     marginLeft: 5,
+
   },
   deleteButton: {
     justifyContent: "center",
