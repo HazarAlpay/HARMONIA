@@ -19,6 +19,7 @@ import axios from "axios";
 import { GestureHandlerRootView, Swipeable } from "react-native-gesture-handler";
 import { Linking } from "react-native";
 import FontAwesome from "react-native-vector-icons/FontAwesome";
+import { Keyboard } from "react-native";
 
 import {
   CLIENT_ID,
@@ -28,8 +29,8 @@ import {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const userId = 1; //  Profilin sahibi (örneğin, görüntülenen profil) Şu anlık sabit
-  const [currentUserId, setCurrentUserId] = useState(2); // Şu anki kullanıcı
+  const userId = 3; //  Profilin sahibi (örneğin, görüntülenen profil) Şu anlık sabit
+  const [currentUserId, setCurrentUserId] = useState(3); // Şu anki kullanıcı
 
   const [profile, setProfile] = useState({
     username: "",
@@ -67,7 +68,7 @@ export default function ProfileScreen() {
   const SPOTIFY_ALBUM_API_URL = "https://api.spotify.com/v1/albums";
   const SPOTIFY_ARTIST_API_URL = "https://api.spotify.com/v1/artists";
   
-  const BASE_URL = "http://192.168.1.21:8765";
+  const BASE_URL = "http://172.20.10.8:8765";
 
 
   // Spotify Access Token Alma
@@ -115,6 +116,7 @@ export default function ProfileScreen() {
       if (response.ok) {
         setReviews((prevReviews) => prevReviews.filter((review) => review.id !== reviewId));
         Alert.alert("Başarılı", "Review silindi.");
+        setModalVisible(false); // Modal'ı kapat
         fetchUsersReviews(); // Silindikten sonra yenile
       } else {
         Alert.alert("Hata", "Review silinemedi.");
@@ -466,6 +468,13 @@ const ImageModal = () => (
     fetchToken();
   }, []);
 
+  useEffect(() => {
+    if (searchModalVisible) { // Arama ekranı açıldığında
+      setSearchText(""); // Arama metnini sıfırla
+      setSearchResults([]); // Arama sonuçlarını sıfırla
+    }
+  }, [searchModalVisible]);
+
   // Arama İşlemi
   const handleSearch = async (text) => {
     setSearchText(text);
@@ -593,7 +602,7 @@ const ImageModal = () => (
     return (
       <GestureHandlerRootView>
         <Swipeable
-          renderRightActions={review.userId === 1 ? renderRightActions : null}
+          renderRightActions={review.userId === currentUserId ? renderRightActions : null} //sadece currentuser yapabilmeli
           overshootRight={false}
           onSwipeableWillOpen={() => setIsSwiped(true)}
           onSwipeableWillClose={() => setIsSwiped(false)}
@@ -849,7 +858,10 @@ const ImageModal = () => (
               <View style={styles.modalButtons}>
                 <TouchableOpacity
                   style={[styles.button, styles.buttonYes]}
-                  onPress={() => handleDeleteReview(selectedReviewId)}
+                  onPress={() => {
+                    handleDeleteReview(selectedReviewId); // Review'u sil
+                    setModalVisible(false); // Modal'ı kapat
+                  }}
                 >
                   <Text style={styles.textStyle}>Yes</Text>
                 </TouchableOpacity>
@@ -943,6 +955,9 @@ const ImageModal = () => (
                 <Text style={styles.resultText}>{item.name}</Text>
               </TouchableOpacity>
             )}
+            onScroll={() => Keyboard.dismiss()} // Klavyeyi kapat
+            scrollEventThrottle={16} // Scroll olayının sıklığını ayarla
+            keyboardShouldPersistTaps="handled" // Klavyenin tıklamalarda kalmasını engelle
             ListEmptyComponent={
               <Text style={styles.noResultsText}>No results found.</Text>
             }

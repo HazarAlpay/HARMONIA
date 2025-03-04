@@ -38,7 +38,7 @@ export default function AuthenticationSettings() {
     useEffect(() => {
       const fetchProfile = async () => {
         try {
-          const data = await getUserProfile(1); // ID'si 1 olan kullanıcı
+          const data = await getUserProfile(3); // ID'si 1 olan kullanıcı
           setProfile({
             username: data.username || "",
             description: data.description || "",
